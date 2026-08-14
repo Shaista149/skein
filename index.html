@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/skein.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Skein</title>
+  </head>
+  <body>
+<aside id="panel">
+  <div id="panel-header">
+    <div class="logo">Crochet <em>Visualizer</em></div>
+  </div>
+  <div id="panel-body">
+    <div class="sec">
+      <div class="sec-label">Presets</div>
+      <div id="presets">
+        <button class="pbtn" data-preset="ball">ball</button>
+        <button class="pbtn" data-preset="gummy_bear">gummy_bear</button>
+        <button class="pbtn" data-preset="striped">striped</button>
+        <button class="pbtn" data-preset="loop_reattach_demo">loop_reattach_demo</button>
+        <button class="pbtn" data-preset="leg_with_ruffle">leg_with_ruffle</button>
+        <button class="pbtn" data-preset="bunny_body">bunny_body</button>
+        <button class="pbtn" data-preset="bunny_ear">bunny_ear</button>
+        <button class="pbtn" data-preset="bunny_leg">bunny_leg</button>
+        <button class="pbtn" data-preset="bunny_arm">bunny_arm</button>
+        <button class="pbtn" data-preset="bunny">bunny</button>
+        <button class="pbtn" data-preset="snout">snout</button>
+      </div>
+    </div>
+    <div class="sec">
+      <div class="sec-label">Your patterns</div>
+      <div id="saved-presets-list"></div>
+      <div class="save-input-row">
+        <input class="save-input" id="save-preset-name" type="text" placeholder="Name this pattern..." spellcheck="false" autocomplete="off">
+        <button class="save-btn" id="btn-save-preset">Save</button>
+      </div>
+    </div>
+    <div class="sec">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div class="sec-label" style="margin-bottom:0;">Pattern</div>
+        <button class="cp-icon-btn-light" id="btn-insert-color" title="Pick a color and insert a CC: color change at the cursor" style="cursor:pointer;"><span class="icon-palette"></span></button>
+      </div>
+      <div style="height:8px;"></div>
+      <div class="pattern-editor-wrap" id="pattern-editor-wrap">
+        <div class="pattern-gutter" id="pattern-gutter-nums"></div>
+        <textarea class="pattern-textarea" id="pattern-textarea" spellcheck="false" autocomplete="off" wrap="soft" rows="1"></textarea>
+        <div class="pattern-gutter" id="pattern-gutter-badges"></div>
+      </div>
+      <div class="pattern-measure" id="pattern-measure"></div>
+      <div class="error-box" id="error-box"></div>
+    </div>
+    <div class="sec">
+      <details>
+        <summary>Notation guide</summary>
+        <div class="notation-hint" style="margin-top:8px;">
+          <div class="notation-item"><b>MR:6</b> sc into a magic ring</div>
+          <div class="notation-item"><b>ch:21</b> chain 21</div>
+          <div class="notation-item"><b>chr:6</b> chain ring - like MR but with no center hub cinching it closed</div>
+          <div class="notation-item"><b>6sc</b> or <b>sc6</b> 6 single crochet</div>
+          <div class="notation-item"><b>hdc</b> / <b>dc</b> / <b>tr</b> half-double crochet, double crochet, and treble crochet (same either-side count pattern as sc: <b>6dc</b> or <b>dc6</b>)</div>
+          <div class="notation-item"><b>slst</b> slip stitch</div>
+          <div class="notation-item"><b>sk12</b> or <b>skip12</b> skip 12 stitches</div>
+          <div class="notation-item"><b>turn</b> flips the work at the end of a row, for flat pieces (<b>chain</b>)</div>
+          <div class="notation-item"><b>inc</b> increase (2sc in 1 stitch)</div>
+          <div class="notation-item"><b>dec</b> decrease (sc2tog, sc 2 stitches together into 1)</div>
+          <div class="notation-item"><b>[sc, inc] x 6</b> repeat group</div>
+          <div class="notation-item"><b>blo, 12sc</b> back loop only</div>
+          <div class="notation-item"><b>flo, 12sc</b> front loop only</div>
+          <div class="notation-item"><b>puff</b> / <b>hdc3puff</b> puff stitch</div>
+          <div class="notation-item"><b>bobble</b> / <b>dc3bobble</b> bobble stitch</div>
+          <div class="notation-item"><b>hdc3fan</b> 3 separate hdc all worked into the same one stitch (e.g. a ruffle: "[hdc3fan] x 16", see the <b>leg_with_ruffle</b> preset). Works with any base/count: dc3fan, hdc2fan, sc4fan...</div>
+          <div class="notation-item"><b>CC:coral</b> sets the working color going forward, or changes color mid-row (see the <b>striped</b> and <b>cc_midrow_demo</b> presets). Accepts a color name (<span id="notation-color-names"></span>), a hex code like <b>CC:#e8a598</b>, or plain 0-255 numbers like <b>CC:rgb232-165-152</b>. Easiest way: click the <span class="icon-palette" style="width:15px;height:15px;vertical-align:-3px;"></span> button above the pattern box and pick visually instead of typing any of this by hand</div>
+          <div class="notation-item"><b>sew closed</b> (or <b>fold</b>) folds the end row of a piece in half and joins the halves together</div>
+          <div class="notation-item"><b>sc closed</b> (shorthand: <b>scclose</b>) similar to sew closed, but single crochets the halves together</div>
+          <div class="notation-item"><b>attach:r5-blo, 12sc</b> reattach yarn into round 5's skipped back loop (see the <b>loop_reattach_demo</b> and <b>leg_with_ruffle</b> presets)</div>
+          <div class="notation-item"><b>fuse:leg1+ch2+leg2, 36sc</b> "crochet" (fuse) 2 components together - legs left unfinished then worked straight into the body. Name any saved piece from your list; <b>ch2</b> adds a chain between leg1 and leg2. A full round counts as working stitches into the chain on both sides: if leg1 = leg2 = 16sc, the stitches count like 16 + 2 + 16 + 2 (16sc around leg1, 2sc into the back side of the chain, 16sc into leg2, 2sc in the front side of the chain, working from right to left). A fuse round can take a color the same way any round can: <b>fuse:leg1+ch2+leg2, CC:coral, 36sc</b></div>
+          <div class="notation-item"><b>10sc, graft:leg, 10sc</b> crochet a component that ended in sew / sc closed into another structure. To test, try replacing round 19 in <b>bunny_body</b> with: <b>10sc, graft:bunny_ear, 10sc</b> - this reads as 10sc, crochet the bunny_ear into the bunny_body for the next 4sc (the ear has 4sc available on the fold), then 10sc</div>
+          <div class="notation-item"><b>mount:arm,r12:5</b> on its own line, after round 12 - attaches a separately-solved saved piece ("arm"), centered on round 12's 5th stitch. Add <b>@20</b> (e.g. <b>mount:arm,r12:5@20</b>) to angle it 20 degrees from its resting position. Add <b>!flat</b> to press it flat and lay it along the surface instead of protruding (an ear/patch); add <b>!flip</b> if it lands facing/hanging the wrong of its two possible ways round - e.g. <b>mount:ear,r12:5!flat!flip</b> (see the <b>bunny</b> preset)</div>
+          <div class="notation-item" style="margin-bottom:0;"><b>mount:ear2,r5:5-r7:8</b> spans the piece across two rows instead of one point - only works on a piece that ends sew closed / sc closed (a real seam with its own first/last stitch to lay diagonally). Both ends need an exact row AND stitch. Same <b>@angle</b>/<b>!flip</b> tags as above apply</div>
+
+        </div>
+      </details>
+    </div>
+    <div class="sec">
+      <div class="sec-label">Options</div>
+      <div class="field">
+        <label>Yarn thickness</label>
+        <input id="opt-yarn" type="range" min="0.1" max="0.65" step="0.05" value="0.38">
+        <div class="range-row"><span>Fine</span><span id="yarn-val">3.0mm</span><span>Chunky</span></div>
+      </div>
+      <div class="field" style="margin-top:10px;">
+      </div>
+    </div>
+  </div>
+  <div id="panel-footer">
+    <div id="progress-wrap"><div id="progress-bar"></div></div>
+    <div id="status-bar"><span id="status">Enter a pattern above.</span></div>
+    <div id="action-row">
+      <button class="btn btn-primary" id="btn-visualize">Visualize</button>
+      <button class="btn btn-toggle" id="btn-autobuild" title="Reveal the piece round-by-round as you type, instead of solving all at once">Autobuild: off</button>
+    </div>
+  </div>
+</aside>
+<div id="viewport">
+  <canvas id="three-canvas"></canvas>
+  <div class="viewport-top">
+    <div class="view-btns">
+      <button class="view-btn" id="btn-flip">Flip: off</button>
+      <button class="view-btn" id="btn-flatten">Flatten: off</button>
+      <button class="view-btn" id="btn-rows">Row markers: off</button>
+      <button class="view-btn" id="btn-startdot">Row starts: off</button>
+    </div>
+    <div class="color-row" id="color-row"></div>
+  </div>
+  <div id="canvas-hint">Drag to rotate &middot; Scroll to zoom</div>
+  <div class="marker-tooltip" id="marker-tooltip">
+    <div class="tt-row" id="tt-row">&mdash;</div>
+    <div class="tt-stitch" id="tt-stitch">&mdash;</div>
+    <div class="tt-hint" id="tt-hint">click to place marker</div>
+  </div>
+  <button class="marker-mode-btn" id="marker-mode-btn">+ place marker</button>
+  <button class="marker-mode-btn" id="show-markers-btn" style="bottom:56px;display:none;">show markers</button>
+  <div class="marker-panel" id="marker-panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <div class="marker-panel-title" style="margin-bottom:0;">placed markers</div>
+      <button id="marker-panel-close" style="background:none;border:none;color:rgba(247,242,235,.3);cursor:pointer;font-size:16px;font-family:monospace;line-height:1;padding:0;">&times;</button>
+    </div>
+    <div class="marker-legend">Type a shape into a marker's label to change it: <b>eye</b>, <b>oval</b>, <b>thin oval</b> (add <b>vertical</b> for tall), <b>heart</b>, or <b>heart flip</b> for upside down.</div>
+    <div id="marker-list"></div>
+  </div>
+  <div id="solve-overlay">
+    <svg class="progress-ring" viewBox="0 0 64 64">
+      <circle cx="32" cy="32" r="26" fill="none" stroke="#3d2e22" stroke-width="4"/>
+      <circle id="ring-circle" cx="32" cy="32" r="26" fill="none" stroke="#c45c3a" stroke-width="4"
+        stroke-dasharray="163.4" stroke-dashoffset="163.4" stroke-linecap="round"
+        transform="rotate(-90 32 32)" style="transition:stroke-dashoffset .3s;"/>
+    </svg>
+    <div class="solve-label">Solving physics...</div>
+    <div class="solve-sub" id="solve-sub">Initializing</div>
+  </div>
+</div>
+
+    <script type="module" src="/src/app/main.js"></script>
+  </body>
+</html>
