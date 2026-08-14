@@ -47,7 +47,7 @@ src/
     main.js                 wires everything together, owns the solve/render loop
     patternEditor.js        textarea-based pattern editor, saved-pattern storage
     presets.js              built-in pattern library
-    solver.js               orchestrates a solve: parse -> compile ->     physics -> mesh
+    solver.js               orchestrates a solve: parse -> compile -> physics -> mesh
     markers.js              click-to-place stitch markers, save/restore
     autobuild.js            incremental round-by-round solving
     colorPicker.js          color wheel/hex/rgb picker popover
