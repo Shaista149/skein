@@ -1,5 +1,7 @@
 # Skein: Crochet Pattern Visualizer
 
+**[Live demo](https://shaista149.github.io/skein/)**
+
 Skein is a browser tool that renders written crochet patterns as 3D models. Patterns are written in a plain-text notation (`MR:6`, `[sc, inc] x 6`, `blo, 12sc`, etc.), parsed into a graph of stitches, and laid out in 3D using a physics-based graph algorithm (stress majorization).
 
 ![screenshot placeholder](docs/screenshot.png)
