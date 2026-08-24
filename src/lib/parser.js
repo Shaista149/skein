@@ -30,6 +30,13 @@ export function parseLine(raw) {
   const s = normalizeStr(raw);
   if (!s || s==='fo' || s==='fasten off') return [{op:'fo'}];
 
+  // pull closed - standalone directive, same placeholder treatment as fo/turn:
+  // threads the tail through every live stitch of the round just worked and
+  // draws them together to a single point. This fires regardless of whether 
+  // that round decreased - real yarn can be gathered shut from any stitch count, 
+  // it's an explicit action the pattern is asking for.
+  if (s==='pull closed') return [{op:'pullClosed'}];
+
   // mount:name,rN:S / mount:name,rN:S@angle / mount:name,rN:S!flat!flip -
   // a standalone directive line (never mixed with stitch ops on the same
   // line, unlike attach:/fuse: which are prefixes). Unlike graft:, this
@@ -446,7 +453,7 @@ export function computeDisplayNumbers(rounds) {
   let counter = 0;
   for (let i = 0; i < rounds.length; i++) {
     const rnd = rounds[i];
-    if (rnd.isColorOnly || rnd.attachTo || rnd.isFO || rnd.isTurn || rnd.isMountOnly) {
+    if (rnd.isColorOnly || rnd.attachTo || rnd.isFO || rnd.isPullClosed || rnd.isTurn || rnd.isMountOnly) {
       displayNums[i] = '';
     } else {
       if (rnd.fuseBaseDisplayNum != null) counter = Math.max(counter, rnd.fuseBaseDisplayNum);
@@ -463,7 +470,7 @@ export function resolveLibraryRound(name, roundSel, library, visiting) {
   if (!libLines) return { error: `fuse: no saved piece named "${name}"` };
   const sub = parsePattern(libLines, { library, visiting: new Set([...visiting, name]) });
   if (sub.rounds.some(r => r.error)) return { error: `fuse: "${name}" has its own unresolved pattern errors` };
-  const validRounds = sub.rounds.filter(r => r.stitchCount > 0 && !r.isFO && !r.isTurn && !r.isColorOnly);
+  const validRounds = sub.rounds.filter(r => r.stitchCount > 0 && !r.isFO && !r.isPullClosed && !r.isTurn && !r.isColorOnly);
   if (!validRounds.length) return { error: `fuse: "${name}" has no stitch rounds yet` };
 
   // An attach:rN-blo/flo row (see parseLine) is a side branch - it works
@@ -519,6 +526,12 @@ export function parsePattern(lines, opts) {
   let prevCount = 0;
   let currentColor = 'default';
   let hasMR = false;
+  // null while the working yarn is live; 'fo' or 'pullClosed' once it's been
+  // cut - by an explicit 'fo', or by 'pull closed' (gathering the tip shut
+  // is itself a finishing action, the tail doing the gathering IS the
+  // fasten-off tail - there's no real scenario where you cinch a tip closed
+  // and then keep stitching into it). 
+  let yarnCutBy = null;
   // rounds.length-1 isn't safe to use as "the previous round" on its own -
   // turn/fo lines get pushed as placeholder entries with no real stitch
   // tops, so a normal round right after one of those would end up
@@ -541,6 +554,14 @@ export function parsePattern(lines, opts) {
     if (ops[0].op==='fo') {
       rounds.push({index:rounds.length, ops, stitchCount:0, isFO:true, color:currentColor});
       loopUsage.push({front:true, back:true, both:true});
+      yarnCutBy = 'fo';
+      continue;
+    }
+    // pull closed
+    if (ops[0].op==='pullClosed') {
+      rounds.push({index:rounds.length, ops, stitchCount:0, isPullClosed:true, color:currentColor});
+      loopUsage.push({front:true, back:true, both:true});
+      yarnCutBy = 'pullClosed';
       continue;
     }
     // turn
@@ -580,7 +601,7 @@ export function parsePattern(lines, opts) {
       const isSpan = ops[0].mountEndDisplayNum != null;
       if (target < 0) {
         mountError = `mount:${ops[0].mountName}@r${requestedNum} refers to a round that doesn't exist yet`;
-      } else if (rounds[target].isMR || rounds[target].isFO || rounds[target].isTurn || rounds[target].isChainFoundation || rounds[target].isFold || rounds[target].isScClose || rounds[target].isColorOnly || rounds[target].isChr || rounds[target].isMountOnly) {
+      } else if (rounds[target].isMR || rounds[target].isFO || rounds[target].isPullClosed || rounds[target].isTurn || rounds[target].isChainFoundation || rounds[target].isFold || rounds[target].isScClose || rounds[target].isColorOnly || rounds[target].isChr || rounds[target].isMountOnly) {
         mountError = `Round ${requestedNum} has no stitch tops to mount onto`;
       } else if (ops[0].mountStitchIdx < 1 || ops[0].mountStitchIdx > rounds[target].stitchCount) {
         mountError = `mount:${ops[0].mountName}@r${requestedNum}:${ops[0].mountStitchIdx} - stitch ${ops[0].mountStitchIdx} doesn't exist in round ${requestedNum} (has ${rounds[target].stitchCount})`;
@@ -615,7 +636,7 @@ export function parsePattern(lines, opts) {
           mountError = `mount:${ops[0].mountName}@r${requestedNum}:${ops[0].mountStitchIdx}-r${endNum} refers to a round that doesn't exist yet`;
         } else if (endTarget === target) {
           mountError = `mount: span needs two different rows (both ends were r${requestedNum})`;
-        } else if (rounds[endTarget].isMR || rounds[endTarget].isFO || rounds[endTarget].isTurn || rounds[endTarget].isChainFoundation || rounds[endTarget].isFold || rounds[endTarget].isScClose || rounds[endTarget].isColorOnly || rounds[endTarget].isChr || rounds[endTarget].isMountOnly) {
+        } else if (rounds[endTarget].isMR || rounds[endTarget].isFO || rounds[endTarget].isPullClosed || rounds[endTarget].isTurn || rounds[endTarget].isChainFoundation || rounds[endTarget].isFold || rounds[endTarget].isScClose || rounds[endTarget].isColorOnly || rounds[endTarget].isChr || rounds[endTarget].isMountOnly) {
           mountError = `Round ${endNum} has no stitch tops to mount onto`;
         } else if (ops[0].mountEndStitchIdx < 1 || ops[0].mountEndStitchIdx > rounds[endTarget].stitchCount) {
           mountError = `mount:${ops[0].mountName}@r${requestedNum}:${ops[0].mountStitchIdx}-r${endNum}:${ops[0].mountEndStitchIdx} - stitch ${ops[0].mountEndStitchIdx} doesn't exist in round ${endNum} (has ${rounds[endTarget].stitchCount})`;
@@ -678,10 +699,23 @@ export function parsePattern(lines, opts) {
     }
     // mr
     if (ops[0].op==='mr') {
+      // A magic ring is THE foundation ring for a piece - there's only ever
+      // one. A second MR: later in the same pattern used to be treated as a
+      // deliberate second, disconnected piece - but that's exactly what
+      // separate saved components joined with mount:/fuse: are for now, so
+      // a repeat MR: here is flagged instead of silently starting a second
+      // unconnected ring.
+      if (rounds.length !== 0) {
+        rounds.push({index:rounds.length, ops, stitchCount:0, error:`A second magic ring isn't allowed in one pattern - each piece has exactly one starting ring; build the rest as a separate component and join with mount:/fuse:`});
+        loopUsage.push({front:false, back:false, both:false});
+        yarnCutBy = null; // the specific error is already shown right here - don't also flag the next line with the generic "continues after" message
+        continue;
+      }
       const startColor = currentColor;
       const count = ops[0].count;
       if (ops[0].color) currentColor = ops[0].color;
       hasMR = true;
+      yarnCutBy = null; // fresh foundation - a new length of yarn, whatever came before is irrelevant
       rounds.push({index:rounds.length, ops, stitchCount:count, isMR:true, color:currentColor, startColor});
       loopUsage.push({front:false, back:false, both:false});
       prevCount = count;
@@ -689,14 +723,20 @@ export function parsePattern(lines, opts) {
       continue;
     }
     // chr: chain ring - same closed-ring shape as mr but no hub (see notes
-    // at the chr: token parser above). Reuses hasMR's "a foundation already
-    // exists" bookkeeping since a chain ring is just as valid a starting
-    // ring as a magic ring is.
+    // at the chr: token parser above). Same one-ring-per-piece restriction
+    // as mr: above, for the same reason.
     if (ops[0].op==='chr') {
+      if (rounds.length !== 0) {
+        rounds.push({index:rounds.length, ops, stitchCount:0, error:`A second chain ring isn't allowed in one pattern - each piece has exactly one starting ring; build the rest as a separate component and join with mount:/fuse:`});
+        loopUsage.push({front:false, back:false, both:false});
+        yarnCutBy = null; // the specific error is already shown right here - don't also flag the next line with the generic "continues after" message
+        continue;
+      }
       const startColor = currentColor;
       const count = ops[0].count;
       if (ops[0].color) currentColor = ops[0].color;
       hasMR = true;
+      yarnCutBy = null; // fresh foundation - a new length of yarn, whatever came before is irrelevant
       rounds.push({index:rounds.length, ops, stitchCount:count, isChr:true, color:currentColor, startColor});
       loopUsage.push({front:false, back:false, both:false});
       prevCount = count;
@@ -704,12 +744,20 @@ export function parsePattern(lines, opts) {
       continue;
     }
     // ch:N foundation chain - starts a FLAT piece (open rows, no wraparound
-    // edge) instead of a tube built from a magic ring.
+    // edge) instead of a tube built from a magic ring. Unlike mr:/chr:, a
+    // later ch: is still allowed - a flat piece worked in pieces.
     if (ops[0].op==='chainFoundation') {
+      if (yarnCutBy === 'pullClosed') {
+        rounds.push({index:rounds.length, ops, stitchCount:0, error:`A new ch: can't follow 'pull closed' - the piece was just gathered shut; build the rest as a separate component and join with mount:/fuse:`});
+        loopUsage.push({front:false, back:false, both:false});
+        yarnCutBy = null; // the specific error is already shown right here - don't also flag the next line with the generic "continues after" message
+        continue;
+      }
       const startColor = currentColor;
       const count = ops[0].count;
       if (ops[0].color) currentColor = ops[0].color;
       hasMR = true; // reuse the same "foundation already exists" bookkeeping
+      yarnCutBy = null; // fresh foundation - a new length of yarn, whatever came before is irrelevant
       rounds.push({index:rounds.length, ops, stitchCount:count, isChainFoundation:true, color:currentColor, startColor});
       loopUsage.push({front:false, back:false, both:false});
       prevCount = count;
@@ -731,7 +779,7 @@ export function parsePattern(lines, opts) {
       ops = ops.slice(1);
       if (target < 0) {
         attachError = `attach:r${requestedNum}-${attachTo.loop} refers to a round that doesn't exist yet`;
-      } else if (rounds[target].isMR || rounds[target].isFO || rounds[target].isTurn || rounds[target].isChainFoundation || rounds[target].isFold || rounds[target].isScClose || rounds[target].isColorOnly || rounds[target].isMountOnly) {
+      } else if (rounds[target].isMR || rounds[target].isFO || rounds[target].isPullClosed || rounds[target].isTurn || rounds[target].isChainFoundation || rounds[target].isFold || rounds[target].isScClose || rounds[target].isColorOnly || rounds[target].isMountOnly) {
         attachError = `Round ${requestedNum} has no stitch tops to attach into`;
       }
     }
@@ -748,6 +796,9 @@ export function parsePattern(lines, opts) {
     if (ops[0].op==='fuse') {
       fuseTo = ops[0].segments.map(seg => ({...seg}));
       ops = ops.slice(1);
+      if (rounds.length !== 0) {
+        fuseError = `fuse: can only be the very first line of a pattern (round ${rounds.length + 1} isn't the start)`;
+      } else
       // v1 scope: the left/right mirroring (see the pieceSlots swap in
       // parseLine) and the placement math in ringPlacement both assume
       // exactly two pieces facing each other across the bridge - a third
@@ -755,9 +806,8 @@ export function parsePattern(lines, opts) {
       // outright rather than producing a broken shape. Lifting this to N
       // pieces later means generalizing that placement geometry, not just
       // removing this check.
-      const pieceCount = fuseTo.filter(s => s.kind === 'piece').length;
-      if (pieceCount > 2) {
-        fuseError = `fuse: only 2 pieces can be fused together at once (this round names ${pieceCount})`;
+      if (fuseTo.filter(s => s.kind === 'piece').length > 2) {
+        fuseError = `fuse: only 2 pieces can be fused together at once (this round names ${fuseTo.filter(s => s.kind === 'piece').length})`;
       }
       for (const seg of fuseTo) {
         if (fuseError) break;
@@ -852,6 +902,14 @@ export function parsePattern(lines, opts) {
     let error = attachError || fuseError || graftError;
     if (error) {
       // already set
+    } else if (!attachTo && !fuseTo && yarnCutBy) {
+      // The trunk was already fastened off (or gathered pull-closed, which
+      // cuts the yarn just the same) and nothing since then re-founded it
+      // (MR:, ch:, chr:) or explicitly re-threaded a new length into an old
+      // loop (attach:/fuse:) - this round would silently be built on yarn
+      // that's already been cut.
+      error = `Pattern continues after ${yarnCutBy === 'pullClosed' ? "'pull closed'" : "'fo'"} - nothing can be built here without a new foundation (MR:, ch:, chr:) or an explicit attach:/fuse:`;
+      yarnCutBy = null;
     } else if (!attachTo && !fuseTo && !hasMR && rounds.length===0) {
       // first round without MR - that's fine for flat pieces
     } else if (isFollowingChain && !hasTurnAnywhere && consumedCount > baseCount) {
@@ -928,6 +986,10 @@ export function parsePattern(lines, opts) {
     if (!attachTo) {
       lastStitchRoundIdx = rounds.length - 1;
       prevCount = producedCount;
+      // A successful fuse: round is a fresh re-threading of the trunk (new
+      // yarn joining onto other pieces' live rims) - it becomes the new
+      // trunk baseline, so it clears any earlier cut just like MR/ch/chr do.
+      if (fuseTo && !error) yarnCutBy = null;
     }
   }
 

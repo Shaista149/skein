@@ -143,25 +143,27 @@ export function compileGraph(pattern, opts) {
   // "ri+1" the way a plain piece's numbering is.
   const { displayNums: patternDisplayNums } = computeDisplayNumbers(pattern.rounds);
   const ownRoundDisplayNums = [];
-  const followedByFO = []; // parallel to rnds - true only if an explicit 'fo' (fasten off)
+  const followedByPullClosed = []; // parallel to rnds - true only if an explicit 'pull closed'
                             // directive appears before any other real round of stitches. This
-                            // is the ONE notation that actually says "the piece ends here" -
-                            // used below so a decreasing round only gets treated as a cinched-
-                            // shut closing cap when the pattern has actually said so, not just
-                            // because it happens to be the last (possibly still unfinished)
-                            // round typed so far.
+                            // is the ONE notation that actually says "gather this round's live
+                            // stitches shut" - used below so a round only gets treated as a
+                            // cinched closing cap when the pattern has actually asked for that,
+                            // not inferred just because the round happens to decrease or happens
+                            // to be the last one typed so far. Fires the same way regardless of
+                            // whether the round decreased first - real yarn can be gathered
+                            // closed from any stitch count, 'fo' itself never draws anything.
   pattern.rounds.forEach((r, pIdx) => {
-    if (!r.isFO && !r.isTurn && !r.isColorOnly && r.stitchCount > 0) {
+    if (!r.isFO && !r.isPullClosed && !r.isTurn && !r.isColorOnly && r.stitchCount > 0) {
       patternToRndIdx.set(pIdx, rnds.length);
       ownRoundDisplayNums[rnds.length] = patternDisplayNums[pIdx];
       rnds.push(r);
       let followed = false;
       for (let j = pIdx + 1; j < pattern.rounds.length; j++) {
         const nr = pattern.rounds[j];
-        if (nr.isFO) { followed = true; break; }
-        if (!nr.isTurn && !nr.isColorOnly && !nr.isMountOnly) break; // hit another real round before any 'fo' - not fastened off here
+        if (nr.isPullClosed) { followed = true; break; }
+        if (!nr.isTurn && !nr.isColorOnly && !nr.isMountOnly && !nr.isFO) break; // hit another real round before any 'pull closed' - not gathered shut here
       }
-      followedByFO.push(followed);
+      followedByPullClosed.push(followed);
     }
   });
   if (rnds.length === 0) return {N:0, adjList:[], nodeData:[], roundNodes:[], roundTypes:[]};
@@ -831,11 +833,10 @@ export function compileGraph(pattern, opts) {
     }
     if (rnd.isFlap && !isFlatPiece) flapRoundSet.add(ri);
 
-    // A mid-pattern magic ring (e.g. a mushroom's separate stem starting
-    // fresh after the cap) gets the same real hub node as round 0's MR -
-    // it's a genuinely separate piece (no vertical edges connect it to
-    // anything before it, same as round 0), and without this it was just
-    // a bare lateral ring with no shape-stabilizing structure at all.
+    // Every real piece has exactly one MR: (see parsePattern - a second MR:
+    // anywhere else in the same pattern is now rejected at parse time, a
+    // separate piece belongs in its own component, joined with mount:/
+    // fuse: instead). This just gives round 0's ring its real hub node.
     if (rnd.isMR) {
       hubOf.set(ri, addHub(ri, currRow, roundStartColor));
       mrRoundIndices.push(ri);
@@ -1023,29 +1024,27 @@ export function compileGraph(pattern, opts) {
     }
   }
 
-  // Closing caps (fasten-off point)
+  // Closing caps (pull-closed point)
   // Mirror of mrRoundIndices, but for the OTHER end of a piece: a round
   // that nothing else attaches to (no round continues from it, sequentially
-  // or via attach:rN), that itself decreased down from its base, AND that
-  // was explicitly fastened off (see followedByFO above) - i.e. a real
-  // "dec dec dec, fo" tip, which in actual crochet gets cinched shut by the
-  // tail, not left as an open hole. A round with no continuation that
-  // DIDN'T decrease (e.g. a flat-topped cylinder end, or a live edge meant
-  // to be sewn/left open) is deliberately left uncapped - capping it would
-  // be inventing closure the pattern never asked for. Same reason an
-  // explicit 'fo' is required rather than just inferred from "last round
-  // typed so far": a decreasing round with nothing after it yet may simply
-  // be a pattern still being written - its stitches haven't actually been
-  // consumed/cinched, so rendering it sealed shut would be guessing an
-  // ending that was never computed.
+  // or via attach:rN), AND that was explicitly gathered shut with a 'pull
+  // closed' directive (see followedByPullClosed above) - the tail threaded
+  // through every live stitch and drawn tight, same technique real crochet
+  // uses to close an amigurumi tip or seal a stuffed opening. This now
+  // fires regardless of whether the round decreased first - gathering is an
+  // explicit action the pattern asked for, not something inferred from
+  // stitch math, so a wide flat round can be pulled closed too (it'll
+  // pucker, same as real yarn would). A round with no continuation and no
+  // 'pull closed' (e.g. a flat-topped cylinder end, or a live edge meant to
+  // be sewn/left open) is deliberately left uncapped - capping it would be
+  // inventing closure the pattern never asked for. 'fo' alone never draws
+  // anything, it's just the tail being cut.
   const continuedFrom = new Set();
   for (let rj = 1; rj < rnds.length; rj++) {
-    if (rnds[rj].isMR || rnds[rj].isChr) continue; // fresh MR/CHR start is its own disconnected piece -
-                                  // it does NOT build on whatever round came before
-                                  // it sequentially, so it must not suppress that
-                                  // round's own closing cap (see mushroom: the cap's
-                                  // final "6dec" is immediately followed by the
-                                  // stem's own "MR:8", but the two aren't connected)
+    if (rnds[rj].isMR || rnds[rj].isChr) continue; // defensive only - parsePattern now rejects
+                                  // any MR:/chr: that isn't round 0, so this
+                                  // can't actually be hit for rj>=1 anymore,
+                                  // left in case that ever changes
     continuedFrom.add(roundAttachTo[rj] != null ? roundAttachTo[rj] : rj - 1);
   }
   const closingRoundIndices = [];
@@ -1053,10 +1052,9 @@ export function compileGraph(pattern, opts) {
     for (let ri = 0; ri < rnds.length; ri++) {
       if (continuedFrom.has(ri)) continue;       // something else builds on top of it
       if (mrRoundIndices.includes(ri)) continue; // a lone MR round already has its own hub
-      if (rnds[ri].isChr) continue;              // a chr foundation ring has no hub and isn't a decrease-to-a-point tip
+      if (rnds[ri].isChr) continue;              // a chr foundation ring has no hub and isn't a gather-to-a-point tip
       if (foldRoundSet.has(ri)) continue;        // fold rounds close via their own seam, not a hub
-      if (!roundDecreased[ri]) continue;         // no decrease = not actually cinching to a point
-      if (!followedByFO[ri]) continue;           // not explicitly fastened off yet - don't guess the ending
+      if (!followedByPullClosed[ri]) continue;   // not explicitly gathered shut - don't guess the ending
       closingRoundIndices.push(ri);
       hubOf.set(ri, addHub(ri, roundNodes[ri], nodeData[roundNodes[ri][0]]?.color));
     }
@@ -1344,6 +1342,20 @@ export function compileGraph(pattern, opts) {
   }
 
   return {N: nid, adjList, nodeData, roundNodes, roundBobbles: roundBobblesList, roundTypes, roundAttachTo, roundAttachToSeed, chainDepth, chainTargetBase, isFlatPiece, chainFoundationRound, chainOvalRound, mrRoundIndices, closingRoundIndices, hubOf, foldRounds: foldRoundSet, flapRounds: flapRoundSet, hardFlattenRounds: sewClosedRoundSet, warmStartPos, fusedPinnedIds, fuseRoundIndices, fuseRoundLift, fuseRoundSegments, fusedPieceGroups, graftPieceGroups, mountPieceGroups, ownRoundCount, importedRoundRanges, ownRoundDisplayNums};
+}
+
+// True if this compiled graph joined in another piece via fuse:/graft:/
+// mount:. flattenHorizontal only knows how to project a single connected 
+// stress-majorization result, so it has nothing consistent to do with a 
+// piece that was positioned afterward, separately, by a different process. 
+// Flatten is disallowed on anything built this way rather than producing 
+// a plausible-looking but physically meaningless flattened shape.
+export function usesAssembly(graph) {
+  return !!(graph && (
+    (graph.fuseRoundIndices && graph.fuseRoundIndices.size > 0) ||
+    (graph.mountPieceGroups && graph.mountPieceGroups.length > 0) ||
+    (graph.graftPieceGroups && graph.graftPieceGroups.length > 0)
+  ));
 }
 
 // DIJKSTRA (min-heap priority queue)

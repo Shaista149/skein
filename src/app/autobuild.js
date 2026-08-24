@@ -5,7 +5,7 @@ import {
   roundsNeedPieceLibrary, roundsNeedIncrementalFuseSolve,
   solveFusedPiecesCached, solveFusedIncrementally, solveGraph,
 } from './solver.js';
-import { getFramingPos, setStatus, abort } from './viewToggles.js';
+import { getFramingPos, setStatus, abort, forceFlattenOffIfIncompatible } from './viewToggles.js';
 import { rebuildDisplay } from './colorPicker.js';
 import { clearMarkers, restorePendingMarkers } from './markers.js';
 import { loadPieceLibrary, patternLines } from './patternEditor.js';
@@ -174,11 +174,20 @@ export async function autobuildStep(parsed) {
 
     setLastSolve(graph, pos);
     invalidateFlattenedPosCache();
+    // Same reasoning as run()'s equivalent check - Flatten left on from an
+    // earlier, simpler autobuild step needs to drop off the moment a
+    // fuse:/graft:/mount: round enters the picture.
+    const flattenWasForcedOff = forceFlattenOffIfIncompatible(graph);
     clearMarkers();
     rebuildDisplay();
     restorePendingMarkers();
     orbit.fitTo(getFramingPos());
-    setStatus(`Autobuild: ${validPrefixLen} round${validPrefixLen===1?'':'s'}, ${graph.N} nodes.`, true);
+    setStatus(
+      flattenWasForcedOff
+        ? `Autobuild: ${validPrefixLen} round${validPrefixLen===1?'':'s'}, ${graph.N} nodes. Flatten turned off - not available with fuse:/graft:/mount:.`
+        : `Autobuild: ${validPrefixLen} round${validPrefixLen===1?'':'s'}, ${graph.N} nodes.`,
+      true
+    );
   } catch (e) {
     if (e.name !== 'AbortError') setStatus('Autobuild error: '+e.message, false);
   }

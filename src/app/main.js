@@ -7,7 +7,7 @@ import {
   roundsNeedPieceLibrary, roundsNeedIncrementalFuseSolve,
   solveFusedPieces, solveFusedPiecesCached, solveFusedIncrementally, solveGraph,
 } from './solver.js';
-import { getFramingPos, setStatus, setProgress, abort } from './viewToggles.js';
+import { getFramingPos, setStatus, setProgress, abort, forceFlattenOffIfIncompatible } from './viewToggles.js';
 import { rebuildDisplay } from './colorPicker.js';
 import { clearMarkers, restorePendingMarkers, initMarkerScene } from './markers.js';
 import { renderPatternEditor, loadPieceLibrary, patternLines } from './patternEditor.js';
@@ -151,12 +151,21 @@ async function run() {
     // markers from the previous solve since node positions have moved.
     setLastSolve(finalGraph, pos);
     invalidateFlattenedPosCache();
+    // If Flatten was left on from a previous, simpler pattern and THIS
+    // solve now uses fuse:/graft:/mount:, drop it rather than silently
+    // showing a flattened view of something flatten was never valid for.
+    const flattenWasForcedOff = forceFlattenOffIfIncompatible(finalGraph);
     clearMarkers();
     rebuildDisplay();
     restorePendingMarkers();
 
     orbit.fitTo(getFramingPos());
-    setStatus(`Done. ${finalGraph.N} nodes, ${iters} iterations.`, true);
+    setStatus(
+      flattenWasForcedOff
+        ? `Done. ${finalGraph.N} nodes, ${iters} iterations. Flatten turned off - not available with fuse:/graft:/mount:.`
+        : `Done. ${finalGraph.N} nodes, ${iters} iterations.`,
+      true
+    );
   } catch(e) {
     if (e.name!=='AbortError') {
       setStatus('Error: '+e.message, false);

@@ -42,6 +42,7 @@
         <button class="cp-icon-btn-light" id="btn-insert-color" title="Pick a color and insert a CC: color change at the cursor" style="cursor:pointer;"><span class="icon-palette"></span></button>
       </div>
       <div style="height:8px;"></div>
+      <div class="component-tabs" id="component-tabs"></div>
       <div class="pattern-editor-wrap" id="pattern-editor-wrap">
         <div class="pattern-gutter" id="pattern-gutter-nums"></div>
         <textarea class="pattern-textarea" id="pattern-textarea" spellcheck="false" autocomplete="off" wrap="soft" rows="1"></textarea>
@@ -73,6 +74,8 @@
           <div class="notation-item"><b>CC:coral</b> sets the working color going forward, or changes color mid-row (see the <b>striped</b> and <b>cc_midrow_demo</b> presets). Accepts a color name (<span id="notation-color-names"></span>), a hex code like <b>CC:#e8a598</b>, or plain 0-255 numbers like <b>CC:rgb232-165-152</b>. Easiest way: click the <span class="icon-palette" style="width:15px;height:15px;vertical-align:-3px;"></span> button above the pattern box and pick visually instead of typing any of this by hand</div>
           <div class="notation-item"><b>sew closed</b> (or <b>fold</b>) folds the end row of a piece in half and joins the halves together</div>
           <div class="notation-item"><b>sc closed</b> (shorthand: <b>scclose</b>) similar to sew closed, but single crochets the halves together</div>
+          <div class="notation-item"><b>pull closed</b> fastens off, gathering the last round's stitches into a point (a magic ring in reverse)</div>
+          <div class="notation-item"><b>fo</b> fasten off, ends the piece. Nothing can follow it in the same component, pattern must end there</div>
           <div class="notation-item"><b>attach:r5-blo, 12sc</b> reattach yarn into round 5's skipped back loop (see the <b>loop_reattach_demo</b> and <b>leg_with_ruffle</b> presets)</div>
           <div class="notation-item"><b>fuse:leg1+ch2+leg2, 36sc</b> "crochet" (fuse) 2 components together - legs left unfinished then worked straight into the body. Name any saved piece from your list; <b>ch2</b> adds a chain between leg1 and leg2. A full round counts as working stitches into the chain on both sides: if leg1 = leg2 = 16sc, the stitches count like 16 + 2 + 16 + 2 (16sc around leg1, 2sc into the back side of the chain, 16sc into leg2, 2sc in the front side of the chain, working from right to left). A fuse round can take a color the same way any round can: <b>fuse:leg1+ch2+leg2, CC:coral, 36sc</b></div>
           <div class="notation-item"><b>10sc, graft:leg, 10sc</b> crochet a component that ended in sew / sc closed into another structure. To test, try replacing round 19 in <b>bunny_body</b> with: <b>10sc, graft:bunny_ear, 10sc</b> - this reads as 10sc, crochet the bunny_ear into the bunny_body for the next 4sc (the ear has 4sc available on the fold), then 10sc</div>
@@ -120,12 +123,8 @@
     <div class="tt-hint" id="tt-hint">click to place marker</div>
   </div>
   <button class="marker-mode-btn" id="marker-mode-btn">+ place marker</button>
-  <button class="marker-mode-btn" id="show-markers-btn" style="bottom:56px;display:none;">show markers</button>
   <div class="marker-panel" id="marker-panel">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-      <div class="marker-panel-title" style="margin-bottom:0;">placed markers</div>
-      <button id="marker-panel-close" style="background:none;border:none;color:rgba(247,242,235,.3);cursor:pointer;font-size:16px;font-family:monospace;line-height:1;padding:0;">&times;</button>
-    </div>
+    <div class="marker-panel-title" style="margin-bottom:10px;">placed markers</div>
     <div class="marker-legend">Type a shape into a marker's label to change it: <b>eye</b>, <b>oval</b>, <b>thin oval</b> (add <b>vertical</b> for tall), <b>heart</b>, or <b>heart flip</b> for upside down.</div>
     <div id="marker-list"></div>
   </div>

@@ -17,6 +17,11 @@ body{background:var(--cream);color:var(--ink);font-family:'DM Mono',monospace;he
 .logo em{color:var(--accent);font-style:normal;}
 /*.tagline{font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--soft);margin-top:6px;}*/
 #panel-body{flex:1;overflow-y:auto;overflow-x:hidden;padding:12px 14px;display:flex;flex-direction:column;gap:12px;}
+#panel-body::-webkit-scrollbar{width:8px;}
+#panel-body::-webkit-scrollbar-track{background:transparent;}
+#panel-body::-webkit-scrollbar-thumb{background:var(--warm1);border-radius:4px;}
+#panel-body::-webkit-scrollbar-thumb:hover{background:var(--mid);}
+#panel-body{scrollbar-width:thin;scrollbar-color:var(--warm1) transparent;}
 .sec{padding:14px 18px;background:var(--cream);border:1.5px solid var(--warm1);border-top-width:3px;border-radius:var(--r);box-shadow:0 3px 8px rgba(58,50,48,.09);}
 .sec:nth-of-type(even){border-top-color:var(--warm2);}
 .sec-label{font-family:'Caveat',cursive;font-weight:600;font-size:16px;letter-spacing:.01em;text-transform:none;color:var(--mid);margin-bottom:8px;}
@@ -46,6 +51,18 @@ body{background:var(--cream);color:var(--ink);font-family:'DM Mono',monospace;he
    across all three columns, and the textarea never wraps, so row N always
    lines up pixel-for-pixel across all three - no scroll-sync needed since
    nothing scrolls internally (the textarea auto-grows to fit its content).*/
+.component-tabs{display:flex;align-items:flex-end;gap:3px;margin-top:6px;padding:0 6px 2px 1px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;}
+.component-tabs::-webkit-scrollbar{height:5px;}
+.component-tabs::-webkit-scrollbar-track{background:transparent;}
+.component-tabs::-webkit-scrollbar-thumb{background:var(--warm1);border-radius:3px;}
+.component-tab{display:flex;align-items:center;gap:5px;background:var(--cream);border:1.5px solid var(--warm1);border-bottom:none;border-radius:8px 8px 0 0;padding:4px 6px 4px 10px;font-family:'DM Mono',monospace;font-size:11px;color:var(--mid);cursor:pointer;transition:all .15s;white-space:nowrap;flex-shrink:0;}
+.component-tab:hover{color:var(--accent);}
+.component-tab.active{background:white;border-color:var(--accent);color:var(--accent);position:relative;top:1.5px;}
+.component-tab-close{background:none;border:none;color:inherit;opacity:.5;cursor:pointer;font-size:12px;line-height:1;padding:0 1px;font-family:monospace;}
+.component-tab-close:hover{opacity:1;}
+.component-tab-add{flex-shrink:0;background:none;border:1.5px dashed var(--warm1);border-bottom:none;border-radius:8px 8px 0 0;color:var(--mid);width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:13px;line-height:1;cursor:pointer;transition:all .15s;}
+.component-tab-add:hover{border-color:var(--accent);color:var(--accent);}
+.component-tab-rename-input{border:1.5px solid var(--accent);border-radius:5px;padding:2px 6px;font-family:'DM Mono',monospace;font-size:11px;color:var(--ink);width:76px;outline:none;background:white;}
 .pattern-editor-wrap{display:flex;align-items:stretch;border:1.5px solid var(--warm1);border-radius:var(--r);background:white;overflow:hidden;transition:border-color .15s;}
 .pattern-editor-wrap:focus-within{border-color:var(--accent);}
 .pattern-editor-wrap.err{border-color:#c44;}

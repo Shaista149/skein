@@ -96,7 +96,6 @@ function nearestNodeInfo(localPoint, graph) {
 }
 
 const markerModeBtn = document.getElementById('marker-mode-btn');
-const showMarkersBtn = document.getElementById('show-markers-btn');
 const markerPanel    = document.getElementById('marker-panel');
 const markerTooltip  = document.getElementById('marker-tooltip');
 
@@ -105,21 +104,15 @@ export function toggleMarkerMode() {
   markerMode = !markerMode;
   markerModeBtn.textContent = markerMode ? 'x exit marker mode' : '+ place marker';
   markerModeBtn.classList.toggle('active', markerMode);
-  if (!markerMode) {
+  if (markerMode) {
+    if (markers.length > 0) markerPanel.style.display = 'block';
+  } else {
     markerTooltip.style.display = 'none';
     canvas.style.cursor = 'default';
+    markerPanel.style.display = 'none';
   }
-  if (markers.length > 0) markerPanel.style.display = 'block';
 }
 markerModeBtn.addEventListener('click', toggleMarkerMode);
-showMarkersBtn.addEventListener('click', () => {
-  markerPanel.style.display = 'block';
-  showMarkersBtn.style.display = 'none';
-});
-document.getElementById('marker-panel-close').addEventListener('click', () => {
-  markerPanel.style.display = 'none';
-  showMarkersBtn.style.display = markers.length ? 'block' : 'none';
-});
 
 // Orients a marker mesh so its local +z (the axis every marker geometry is
 // built along) points out along the surface normal - same as before - but
@@ -229,7 +222,7 @@ function buildMarkerMesh(shape, color, normal, size) {
   return mesh;
 }
 
-function placeMarker(localPoint, info, color, shape, normal, size) {
+function placeMarker(localPoint, info, color, shape, normal, size, forcePanel = true) {
   const id = ++markerId;
   color = color || MARKER_COLORS[0];
   shape = parseShapeInput(shape) || DEFAULT_MARKER_SHAPE;
@@ -238,7 +231,7 @@ function placeMarker(localPoint, info, color, shape, normal, size) {
   mesh.position.copy(localPoint);
   markerGroup.add(mesh);
   markers.push({ id, mesh, color, shape, size, normal: (normal && normal.lengthSq()>1e-8) ? normal.clone().normalize() : null, ...info });
-  syncMarkerPanel(true);
+  syncMarkerPanel(forcePanel);
   return markers[markers.length - 1];
 }
 
@@ -396,7 +389,7 @@ function restoreMarker(entry) {
     p.addScaledVector(normal.clone().normalize(), yarnR);
   }
   const legacyShape = entry.markerType === 'pin' ? 'eye' : (entry.markerType === 'nose' ? entry.noseShape : entry.markerType);
-  placeMarker(p, info, entry.color, entry.shape || legacyShape, normal, entry.size);
+  placeMarker(p, info, entry.color, entry.shape || legacyShape, normal, entry.size, false);
 }
 
 // Drains pendingMarkerRestore against whatever was just solved. Called
@@ -408,7 +401,7 @@ export function restorePendingMarkers() {
   const toRestore = pendingMarkerRestore;
   pendingMarkerRestore = [];
   toRestore.forEach(e => restoreMarker(e));
-  if (toRestore.length) syncMarkerPanel(true);
+  if (toRestore.length) syncMarkerPanel();
 }
 
 function deleteMarker(id) {
@@ -479,13 +472,11 @@ function syncMarkerPanel(forceShow) {
   const list = document.getElementById('marker-list');
   if (markers.length === 0) {
     markerPanel.style.display = 'none';
-    showMarkersBtn.style.display = 'none';
     list.innerHTML = '';
     return;
   }
   if (forceShow) {
     markerPanel.style.display = 'block';
-    showMarkersBtn.style.display = 'none';
   }
   list.innerHTML = markers.map(m => {
     const typeLabel = TYPE_LABEL[m.type] || m.type || '';

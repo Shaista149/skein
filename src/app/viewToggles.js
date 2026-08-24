@@ -4,6 +4,7 @@
 // that these toggles and the solve pipeline both depend on.
 
 import { flattenHorizontal } from '../lib/geometry.js';
+import { usesAssembly } from '../lib/graph.js';
 import { markerGroup, clearMarkers } from './markers.js';
 import { rebuildDisplay } from './colorPicker.js';
 import {
@@ -128,6 +129,11 @@ flipBtn.addEventListener('click', () => {
 });
 flattenBtn.addEventListener('click', () => {
   if (!lastGraph) return;
+  // Flatten can't make sense of a piece built with fuse:/graft:/mount
+  if (usesAssembly(lastGraph)) {
+    setStatus("Flatten isn't available on a piece built with fuse:/graft:/mount:.", false);
+    return;
+  }
   setFlattenOn(!flattenOn);
   flattenBtn.textContent = `Flatten: ${flattenOn ? 'on' : 'off'}`;
   flattenBtn.classList.toggle('on', flattenOn);
@@ -135,6 +141,20 @@ flattenBtn.addEventListener('click', () => {
   rebuildDisplay();
   orbit.fitTo(getFramingPos());
 });
+
+// Called right after a fresh solve (see main.js's run()) - if Flatten was
+// left on from a PREVIOUS, simpler pattern and this new solve now uses
+// fuse:/graft:/mount:, force it back off rather than silently rendering a
+// flattened view of something flatten was never valid for in the first
+// place. Returns true if it actually had to turn anything off, so the
+// caller can decide whether to mention it in the status line.
+export function forceFlattenOffIfIncompatible(graph) {
+  if (!flattenOn || !usesAssembly(graph)) return false;
+  setFlattenOn(false);
+  flattenBtn.textContent = 'Flatten: off';
+  flattenBtn.classList.remove('on');
+  return true;
+}
 rowsBtn.addEventListener('click', () => {
   setRowsOn(!rowsOn);
   rowsBtn.textContent = `Row markers: ${rowsOn ? 'on' : 'off'}`;

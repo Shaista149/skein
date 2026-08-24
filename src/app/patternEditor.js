@@ -2,6 +2,12 @@ import { parsePattern, computeDisplayNumbers } from '../lib/parser.js';
 import { PRESETS } from './presets.js';
 import { markersToSaveData, setPendingMarkerRestore, clearMarkers } from './markers.js';
 import { autobuildStep } from './autobuild.js';
+import {
+  getComponentNames, getActiveComponentName, getComponent,
+  setActiveComponentContent, setActiveComponent, addComponent,
+  renameComponent, removeComponent, resetToSingleComponent,
+  serializeComponents, loadComponentsFromSaved,
+} from './components.js';
 
 // PATTERN EDITOR UI
 const patternEditorWrap = document.getElementById('pattern-editor-wrap');
@@ -12,6 +18,7 @@ const measureEl     = document.getElementById('pattern-measure');
 const errorBox      = document.getElementById('error-box');
 export let patternLines  = [];
 let pendingValidate = null;
+const componentTabsEl = document.getElementById('component-tabs');
 const LINE_HEIGHT = 20; // px - must match .pattern-textarea/.pattern-measure line-height
 
 // Row "identity" here is just array position, same as the old per-input
@@ -127,7 +134,7 @@ export function validate() {
       badge.classList.remove('err');
       badge.removeAttribute('title');
       numEl.removeAttribute('title');
-      if (rnd.isFO || rnd.isTurn || rnd.isColorOnly || rnd.isMountOnly) { badge.textContent = ''; }
+      if (rnd.isFO || rnd.isPullClosed || rnd.isTurn || rnd.isColorOnly || rnd.isMountOnly) { badge.textContent = ''; }
       else { badge.textContent = rnd.stitchCount||''; }
     }
   });
@@ -155,6 +162,162 @@ export function renderPatternEditor() {
   renderGutterSkeleton();
   resizeTextarea();
   validate();
+}
+
+// COMPONENT TABS: 
+// Whichever tab is in focus is what's loaded in the textarea/visualizer
+// below - switching tabs stashes whatever's currently on screen into the
+// component being left (so nothing typed gets lost) before loading the
+// target's own content the same way loading a saved preset already does.
+
+function loadComponentIntoEditor(name) {
+  const c = getComponent(name);
+  if (!c) return;
+  patternLines = [...c.lines];
+  clearMarkers();
+  setPendingMarkerRestore(c.markers);
+  renderPatternEditor();
+}
+
+function switchToComponent(name) {
+  if (name === getActiveComponentName()) return;
+  setActiveComponentContent(patternLines, markersToSaveData());
+  if (!setActiveComponent(name)) return;
+  loadComponentIntoEditor(name);
+  renderComponentTabs();
+}
+
+function isMultiComponentEntry(entry) {
+  return !!(entry && typeof entry === 'object' && !Array.isArray(entry) && entry.components && typeof entry.components === 'object');
+}
+
+// Loads ANY preset/saved entry (built-in PRESETS or one of your own saved
+// patterns) into the editor - ALWAYS replacing the current tab strip with
+// exactly that entry's own tabs (one 'main' tab for a plain single-pattern
+// entry, or however many components a multi-component entry carries).
+function loadPresetEntry(entry) {
+  if (isMultiComponentEntry(entry)) {
+    loadComponentsFromSaved(entry);
+  } else {
+    const { lines, markers } = normalizeSavedEntry(entry);
+    resetToSingleComponent(lines, markers);
+  }
+  loadComponentIntoEditor(getActiveComponentName());
+  renderComponentTabs();
+}
+
+function nextComponentName() {
+  // Numbered off how many tabs exist right now, not a fixed search from 2
+  // every time - so with main+leg+arm+ear already open (4 tabs), the next
+  // one is part_5.
+  let n = getComponentNames().length + 1;
+  while (getComponentNames().includes(`part_${n}`)) n++;
+  return `part_${n}`;
+}
+
+function addComponentTab() {
+  setActiveComponentContent(patternLines, markersToSaveData());
+  const name = nextComponentName();
+  addComponent(name);
+  loadComponentIntoEditor(name);
+  renderComponentTabs();
+  // Drop straight into rename mode for the new tab - "part_2" is a
+  // placeholder, not a name anyone actually wants to keep, so skip the
+  // extra double-click and let it be renamed immediately.
+  const newTabEl = componentTabsEl.querySelector(`[data-name="${CSS.escape(name)}"]`);
+  if (newTabEl) startComponentRename(newTabEl, name);
+}
+
+// Inline rename, same pattern as the saved-preset sidebar's double-click
+// rename - a text input + small confirm button right where the tab was,
+// rather than routing through some separate name field elsewhere.
+function startComponentRename(tabEl, oldName) {
+  const input = document.createElement('input');
+  input.className = 'component-tab-rename-input';
+  input.type = 'text';
+  input.value = oldName;
+  input.spellcheck = false;
+  input.autocomplete = 'off';
+
+  function commit() {
+    const newName = input.value.trim().replace(/\s+/g, '_');
+    if (!newName || newName === oldName) { renderComponentTabs(); return; }
+    if (getComponentNames().includes(newName)) {
+      if (!confirm(`A component named "${newName}" already exists - pick a different name, or cancel to keep "${oldName}".`)) { renderComponentTabs(); return; }
+      input.focus();
+      return;
+    }
+    renameComponent(oldName, newName);
+    renderComponentTabs();
+  }
+  function cancel() { renderComponentTabs(); }
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') commit();
+    else if (e.key === 'Escape') cancel();
+  });
+  input.addEventListener('blur', () => {
+    // Same deferred-cancel trick as the saved-preset rename input - a
+    // click elsewhere blurs the input a moment before that click's own
+    // handler fires, so this needs to wait rather than cancel immediately.
+    setTimeout(() => { if (document.body.contains(input)) cancel(); }, 150);
+  });
+
+  tabEl.innerHTML = '';
+  tabEl.appendChild(input);
+  input.focus();
+  input.select();
+}
+
+export function renderComponentTabs() {
+  componentTabsEl.innerHTML = '';
+  const names = getComponentNames();
+  const active = getActiveComponentName();
+
+  names.forEach(name => {
+    const tab = document.createElement('div');
+    tab.className = 'component-tab' + (name === active ? ' active' : '');
+    tab.dataset.name = name;
+    tab.title = `${name} (double-click to rename)`;
+
+    const label = document.createElement('span');
+    label.className = 'component-tab-label';
+    label.textContent = name;
+    tab.appendChild(label);
+
+    // Only one component ever means there's nothing to switch to and
+    // nothing that should be closable - same "always at least one panel
+    // open" rule removeComponent itself already enforces.
+    if (names.length > 1) {
+      const close = document.createElement('button');
+      close.className = 'component-tab-close';
+      close.textContent = '×';
+      close.title = `Remove "${name}"`;
+      close.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!confirm(`Remove component "${name}"? Its pattern text will be lost.`)) return;
+        const wasActive = name === active;
+        removeComponent(name);
+        if (wasActive) loadComponentIntoEditor(getActiveComponentName());
+        renderComponentTabs();
+      });
+      tab.appendChild(close);
+    }
+
+    tab.addEventListener('click', () => switchToComponent(name));
+    tab.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      startComponentRename(tab, name);
+    });
+    componentTabsEl.appendChild(tab);
+  });
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'component-tab-add';
+  addBtn.title = 'Add component';
+  addBtn.textContent = '+';
+  addBtn.addEventListener('click', addComponentTab);
+  componentTabsEl.appendChild(addBtn);
 }
 
 // Everything below is native textarea behavior: Enter inserts a newline
@@ -186,9 +349,11 @@ document.querySelectorAll('.pbtn').forEach(btn => {
     document.querySelectorAll('.pbtn').forEach(b=>b.classList.remove('active'));
     document.querySelectorAll('.saved-btn').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
-    patternLines = [...PRESETS[btn.dataset.preset]||[]];
-    clearMarkers();
-    renderPatternEditor();
+    // Loading any preset always replaces the whole tab strip with that
+    // preset's own tabs - see loadPresetEntry above.
+    loadPresetEntry(PRESETS[btn.dataset.preset]);
+    setLoadedSavedContext(null);
+    saveNameInput.value = '';
   });
 });
 
@@ -214,14 +379,31 @@ export function loadSavedPresets() {
 }
 
 // fuse:/graft:/mount: resolve piece names against this - the user's own
-// saved patterns PLUS the built-in presets (Ball, Bunny body, etc), so an
-// assembly operation can reference either by name. Kept separate from
+// saved patterns, the built-in presets (Ball, Bunny body, etc), AND every
+// component tab currently open, all merged into one lookup so an assembly
+// operation can reference any of them by name. Kept separate from
 // loadSavedPresets() itself, since that one also backs the "Your patterns"
 // sidebar list and save/delete - merging PRESETS in there would make
-// built-ins show up as fake saved/deletable entries. A saved pattern wins
-// over a built-in of the same name.
+// built-ins show up as fake saved/deletable entries. Precedence, lowest to
+// highest: built-in presets, then saved patterns, then whatever's live in
+// the other component tabs right now - so if a tab happens to share a name
+// with something already saved, the live in-progress version wins, since
+// that's almost certainly what "leg" means when it's referenced from
+// another tab you're actively building alongside it.
 export function loadPieceLibrary() {
-  return { ...PRESETS, ...loadSavedPresets() };
+  const active = getActiveComponentName();
+  const liveComponents = {};
+  for (const cname of getComponentNames()) {
+    // The active tab's own entry is built from `patternLines` directly -
+    // the literal, as-you-type content - rather than whatever's last
+    // stored in components.js for it, since that only gets synced at
+    // tab-switch time and would otherwise be one edit behind what's
+    // actually on screen right now.
+    liveComponents[cname] = cname === active
+      ? { lines: patternLines, markers: markersToSaveData() }
+      : { lines: getComponent(cname).lines, markers: getComponent(cname).markers };
+  }
+  return { ...PRESETS, ...loadSavedPresets(), ...liveComponents };
 }
 function persistSavedPresets(obj) {
   try {
@@ -234,6 +416,14 @@ function persistSavedPresets(obj) {
 const savedListEl   = document.getElementById('saved-presets-list');
 const saveNameInput = document.getElementById('save-preset-name');
 const saveBtn       = document.getElementById('btn-save-preset');
+// Which saved entry (if any) is currently "open" for editing - set when a
+// saved pattern is loaded from the sidebar, or right after a fresh save.
+// Lets saveCurrentPattern() below tell "update the thing I already have
+// open" apart from "save under a name that happens to collide with
+// something else", so editing a saved preset's pattern (and optionally its
+// name) and hitting Save again just updates it in place, no repeated
+// overwrite confirmation for your own pattern.
+let currentlyLoadedSavedName = null;
 
 // A saved-preset entry is either the old bare lines array, or the current
 // {lines, markers} shape - this normalizes either into {lines, markers} so
@@ -241,6 +431,73 @@ const saveBtn       = document.getElementById('btn-save-preset');
 function normalizeSavedEntry(entry) {
   if (Array.isArray(entry)) return { lines: entry, markers: [] };
   return { lines: entry.lines || [], markers: entry.markers || [] };
+}
+
+// True rename, in place: the old key is genuinely removed, not left behind
+// as an orphaned duplicate. Swaps the row's own name button for a small text 
+// input + confirm button, right where you double-clicked.
+function startInlineRename(row, btn, del, oldName) {
+  const input = document.createElement('input');
+  input.className = 'save-input saved-rename-input';
+  input.type = 'text';
+  input.value = oldName;
+  input.spellcheck = false;
+  input.autocomplete = 'off';
+
+  const confirmBtn = document.createElement('button');
+  confirmBtn.className = 'save-btn saved-rename-confirm';
+  confirmBtn.textContent = 'Save';
+
+  function commit() {
+    const newName = input.value.trim().replace(/\s+/g, '_');
+    if (!newName || newName === oldName) { renderSavedPresets(); return; } // no real change - just cancel back to normal
+    const cur = loadSavedPresets();
+    if (cur[newName] && !confirm(`"${newName}" already exists - overwrite it?`)) return;
+    cur[newName] = cur[oldName];
+    delete cur[oldName];
+    persistSavedPresets(cur);
+    // Keep the bottom save context pointed at the right entry if the one
+    // just renamed is the one currently open for editing.
+    if (currentlyLoadedSavedName === oldName) {
+      setLoadedSavedContext(newName);
+    }
+    renderSavedPresets();
+  }
+  function cancel() { renderSavedPresets(); }
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') commit();
+    else if (e.key === 'Escape') cancel();
+  });
+  input.addEventListener('blur', () => {
+    // A click on the confirm button also blurs the input a moment before
+    // its own click fires - deferred so commit() (triggered by that click)
+    // gets to run first instead of blur immediately cancelling it out.
+    setTimeout(() => { if (document.body.contains(input)) cancel(); }, 150);
+  });
+  confirmBtn.addEventListener('mousedown', e => e.preventDefault()); // keep focus on input so the deferred blur-cancel above doesn't race the click
+  confirmBtn.addEventListener('click', commit);
+
+  row.innerHTML = '';
+  row.appendChild(input);
+  row.appendChild(confirmBtn);
+  input.focus();
+  input.select();
+}
+
+function syncSaveButtonLabel() {
+  const name = saveNameInput.value.trim().replace(/\s+/g, '_');
+  const isNewName = currentlyLoadedSavedName != null && name !== '' && name !== currentlyLoadedSavedName;
+  saveBtn.textContent = isNewName ? 'Save as new' : 'Save';
+}
+
+// Tracks which saved entry (if any) is open for editing, WITHOUT typing
+// its name into the visible field - the field staying blank is what tells
+// you "Save updates the pattern you already have open"; typing a name in
+// is what tells you "Save creates/overwrites that specific name instead".
+function setLoadedSavedContext(name) {
+  currentlyLoadedSavedName = name;
+  syncSaveButtonLabel();
 }
 
 function renderSavedPresets() {
@@ -270,24 +527,26 @@ function renderSavedPresets() {
     const btn = document.createElement('button');
     btn.className = 'saved-btn';
     btn.textContent = name;
-    btn.title = `Load "${name}"`;
+    btn.title = `Load "${name}" (double-click to rename)`;
     btn.addEventListener('click', () => {
       document.querySelectorAll('.pbtn').forEach(b=>b.classList.remove('active'));
       document.querySelectorAll('.saved-btn').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active');
-      const { lines, markers: savedMarkers } = normalizeSavedEntry(saved[name]);
-      patternLines = [...lines];
-      // Clear whatever's currently on screen before queuing the saved
-      // markers - otherwise they just pile on top of the old ones once
-      // restorePendingMarkers() runs (this was the "markers double on
-      // load" bug).
-      clearMarkers();
-      // Can't place these yet - restoring a marker needs a solved graph to
-      // find each stitch's actual position, and loading a saved pattern
-      // doesn't auto-visualize. Queued here, consumed by run()/autobuildStep()
-      // the next time either produces a fresh solve (see restorePendingMarkers).
-      setPendingMarkerRestore(savedMarkers);
-      renderPatternEditor();
+      // Loading any saved pattern always replaces the whole tab strip
+      // with that pattern's own tabs - see loadPresetEntry above.
+      loadPresetEntry(saved[name]);
+      // Track this as the entry currently open for editing WITHOUT typing
+      // its name into the visible field - editing the pattern and hitting
+      // Save (field left blank) updates this same saved entry, no
+      // retyping the name from scratch. Typing a name in creates/updates
+      // that name instead (see saveCurrentPattern) - and that's still not
+      // how you rename something; double-click the name itself below for
+      // an actual rename.
+      setLoadedSavedContext(name);
+    });
+    btn.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      startInlineRename(row, btn, del, name);
     });
 
     const del = document.createElement('button');
@@ -300,6 +559,12 @@ function renderSavedPresets() {
       const cur = loadSavedPresets();
       delete cur[name];
       persistSavedPresets(cur);
+      // If the entry being deleted is the one currently open for editing,
+      // drop that link too - otherwise the next Save would silently
+      // recreate the just-deleted entry under its old name.
+      if (currentlyLoadedSavedName === name) {
+        setLoadedSavedContext(null);
+      }
       renderSavedPresets();
     });
 
@@ -310,25 +575,28 @@ function renderSavedPresets() {
 }
 
 function saveCurrentPattern() {
-  // Piece names typed into fuse:/graft:/mount: can't contain spaces (see
-  // the mount/fuse/graft regexes in parser.js) - a saved name that could
-  // is a name you can see in the sidebar but can never actually reference
-  // from another pattern. Normalizing here keeps what's shown always equal
-  // to what you'd type, same as the built-in preset button labels.
-  const name = saveNameInput.value.trim().replace(/\s+/g, '_');
+  // Preset names can't have spaces (see fuse:/graft:/mount: parsing)
+  const typed = saveNameInput.value.trim().replace(/\s+/g, '_');
+  // blank field = update whatever's currently loaded
+  const name = typed || currentlyLoadedSavedName;
   if (!name) { saveNameInput.focus(); return; }
   const cur = loadSavedPresets();
-  if (cur[name] && !confirm(`Overwrite existing saved pattern "${name}"?`)) return;
-  // markers may not exist yet at parse time (defined further down the
-  // file) - fine, this function is only ever called from a click/keydown
-  // handler, long after the whole script has finished running once.
-  cur[name] = { lines: [...patternLines], markers: markersToSaveData() };
+  const isUpdatingOwnEntry = currentlyLoadedSavedName != null && name === currentlyLoadedSavedName;
+  if (cur[name] && !isUpdatingOwnEntry && !confirm(`Overwrite existing saved pattern "${name}"?`)) return;
+  setActiveComponentContent(patternLines, markersToSaveData()); // flush active tab's latest edits first
+  cur[name] = serializeComponents(); // saves every open tab, not just the active one
   persistSavedPresets(cur);
   saveNameInput.value = '';
+  setLoadedSavedContext(name);
   renderSavedPresets();
+  savedListEl.querySelectorAll('.saved-btn').forEach(b => {
+    b.classList.toggle('active', b.textContent === name);
+  });
 }
 
 saveBtn.addEventListener('click', saveCurrentPattern);
 saveNameInput.addEventListener('keydown', e => { if (e.key === 'Enter') saveCurrentPattern(); });
+saveNameInput.addEventListener('input', syncSaveButtonLabel);
 
 renderSavedPresets();
+renderComponentTabs();
